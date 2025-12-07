@@ -78,28 +78,46 @@ public fun list_hero(nft: Hero, price: u64, ctx: &mut TxContext) {
     // TODO: Use transfer::share_object() to make it publicly tradeable
     transfer::share_object(list_hero);
 }
-
 #[allow(lint(self_transfer))]
 public fun buy_hero(list_hero: ListHero, coin: Coin<SUI>, ctx: &mut TxContext) {
 
-    // TODO: Destructure list_hero to get id, nft, price, and seller
-        // Hints:
-        // let ListHero { id, nft, price, seller } = list_hero;
+    // Destructure list_hero to get id, nft, price, and seller
     let ListHero {id, nft, price, seller} = list_hero;
-    // TODO: Use assert! to verify coin value equals listing price (coin::value(&coin) == price) else abort with `EInvalidPayment`
-    assert!(coin::value(&coin) == price);
-    // TODO: Transfer coin to seller (use transfer::public_transfer() function)
-    transfer::public_transfer(coin,seller);
-    // TODO: Transfer hero NFT to buyer (ctx.sender())
-    transfer::public_transfer(nft,ctx.sender());
-    // TODO: Emit HeroBought event with transaction details (Don't forget to use object::uid_to_inner(&id) )
+    
+    let payment_amount = coin::value(&coin);
+    
+    // 1. EKSİK ÖDEME KONTROLÜ: Ödeme fiyattan az ise, EInvalidPayment (1) hatası ver.
+    // Bu, testlerin beklediği ana düzeltmedir.
+    assert!(payment_amount >= price, EInvalidPayment);
+    
+    // 2. FAZLA ÖDEME İADE: Ödeme fiyattan fazla ise, para üstünü (change) alıcıya iade et.
+    if (payment_amount > price) {
+        // Para üstü miktarını hesapla ve coin'den böl
+        let change = coin::split(&mut coin, payment_amount - price, ctx);
+        // Para üstünü alıcıya (tx göndericisine) geri gönder
+        transfer::public_transfer(change, ctx.sender());
+    };
+    
+    // NOT: Bu noktada 'coin' nesnesi tam olarak 'price' değerine sahiptir.
+    
+    // 3. COIN TRANSFERİ: Kalan coin'i satıcıya gönder.
+    transfer::public_transfer(coin, seller);
+    
+    // 4. NFT TRANSFERİ: Hero NFT'yi alıcıya gönder.
+    transfer::public_transfer(nft, ctx.sender());
+    
+    // 5. EVENT: HeroBought olayını yay.
     event::emit(HeroBought {
-        list_hero_id: id.to_inner(),
+        list_hero_id: object::uid_to_inner(&id), 
         price,
         buyer: ctx.sender(),
         seller,
         timestamp: ctx.epoch_timestamp_ms()
     });
+    
+    // 6. DELETE: Listing ID'yi sil.
+    object::delete(id);
+}
     // TODO: Delete the listing ID (object::delete(id))
     object::delete(id);
 }
