@@ -28,7 +28,7 @@ public struct ArenaCompleted has copy, drop {
 
 public fun create_arena(hero: Hero, ctx: &mut TxContext) {
 
-    / Create an arena object
+    // Create an arena object
 
     let arena = Arena {
         id: object::new(ctx),
