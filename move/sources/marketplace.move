@@ -80,24 +80,32 @@ public fun list_hero(nft: Hero, price: u64, ctx: &mut TxContext) {
 }
 
 #[allow(lint(self_transfer))]
-// Düzeltme: coin parametresine mut anahtar kelimesi eklendi (coin::split kullanıldığı için gerekli).
-public fun buy_hero(list_hero: ListHero, mut coin: Coin<SUI>, ctx: &mut TxContext) {
+public fun buy_hero(list_hero: ListHero, coin: Coin<SUI>, ctx: &mut TxContext) {
 
-    // Destructure list_hero to get id, nft, price, and seller
     let ListHero {id, nft, price, seller} = list_hero;
     
-    let payment_amount = coin::value(&coin);
+    // YENİ MANTIK: Coin'in değeri TAM olarak listelenen fiyata eşit olmalıdır. 
+    // Eksik (too_low) veya fazla (too_high) ödeme durumunda EInvalidPayment hatası verilir.
+    assert!(coin::value(&coin) == price, EInvalidPayment);
     
-    // 1. EKSİK ÖDEME KONTROLÜ: Ödeme fiyattan az ise, EInvalidPayment (1) hatası ver.
-    assert!(payment_amount >= price, EInvalidPayment);
+    // COIN TRANSFERİ: Coin'i satıcıya gönder.
+    transfer::public_transfer(coin, seller);
     
-    // 2. FAZLA ÖDEME İADE: Ödeme fiyattan fazla ise, para üstünü (change) alıcıya iade et.
-    if (payment_amount > price) {
-        // Para üstü miktarını hesapla ve coin'den böl
-        let change = coin::split(&mut coin, payment_amount - price, ctx);
-        // Para üstünü alıcıya (tx göndericisine) geri gönder
-        transfer::public_transfer(change, tx_context::sender(ctx));
-    };
+    // NFT TRANSFERİ: Hero NFT'yi alıcıya gönder.
+    transfer::public_transfer(nft, tx_context::sender(ctx));
+    
+    // EVENT: HeroBought olayını yay.
+    event::emit(HeroBought {
+        list_hero_id: object::uid_to_inner(&id), 
+        price,
+        buyer: tx_context::sender(ctx),
+        seller,
+        timestamp: tx_context::epoch_timestamp_ms(ctx)
+    });
+    
+    // DELETE: Listing ID'yi sil.
+    object::delete(id);
+}
     
     // 3. COIN TRANSFERİ: Kalan coin'i satıcıya gönder.
     transfer::public_transfer(coin, seller);
